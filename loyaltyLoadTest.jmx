@@ -1,0 +1,396 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.0 r1840935">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="NBA测试" enabled="true">
+      <stringProp name="TestPlan.comments"></stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.tearDown_on_shutdown">true</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments" guiclass="ArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+      <stringProp name="TestPlan.user_define_classpath"></stringProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+          <intProp name="LoopController.loops">-1</intProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">${__P(threads,50)}</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">1</stringProp>
+        <boolProp name="ThreadGroup.scheduler">true</boolProp>
+        <stringProp name="ThreadGroup.duration">60</stringProp>
+        <stringProp name="ThreadGroup.delay">10</stringProp>
+      </ThreadGroup>
+      <hashTree>
+        <BeanShellPreProcessor guiclass="TestBeanGUI" testclass="BeanShellPreProcessor" testname="Create unique external_customer_id and sig PreProcessor" enabled="true">
+          <stringProp name="filename"></stringProp>
+          <stringProp name="parameters"></stringProp>
+          <boolProp name="resetInterpreter">false</boolProp>
+          <stringProp name="script">import java.util.UUID;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
+import java.util.Map;
+import java.util.Set;
+import java.util.HashMap;
+
+String ecid = vars.get(&quot;ecid&quot;);
+String secret = vars.get(&quot;secret&quot;);
+String uuid = vars.get(&quot;uuid&quot;);
+String customerShowPath = &quot;/data/customer/show&quot;;
+String recordEventPath = &quot;/api/record.json&quot;;
+String customerEventsPath = &quot;/data/customer/events&quot;;
+String enrollmentPath = &quot;/api/enroll.json&quot;;
+
+String getSignature(String url) {
+        byte[] three = url.getBytes();
+        String signature = null;
+        MessageDigest md;
+        try {
+            md = MessageDigest.getInstance(&quot;MD5&quot;);
+            byte[] thedigest = md.digest(three);
+            StringBuilder buff = new StringBuilder();
+            for (byte b : thedigest) {
+                String conversion = Integer.toString(b &amp; 0xFF, 16);
+                while (conversion.length() &lt; 2) {
+                    conversion = &quot;0&quot; + conversion;
+                }
+                buff.append(conversion);
+            }
+            signature = buff.toString();
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
+	   
+        return signature;
+    }
+
+
+ String buildUrlForSig(String path, String secret, Map params) {
+        StringBuilder builder = new StringBuilder(secret);
+        builder.append(path);
+        builder.append(&quot;?&quot;);
+
+        Set keySet = params.keySet();
+        for(String k : keySet){
+            String v = params.get(k);
+            if (v != null) {
+                builder.append(k);
+                builder.append(&quot;=&quot;);
+                try {
+                    builder.append(URLEncoder.encode(new String(v.getBytes(), &quot;UTF-8&quot;), &quot;UTF-8&quot;));
+                } catch (UnsupportedEncodingException e) {
+                    e.printStackTrace();
+                }
+                builder.append(&quot;&amp;&quot;);
+            }
+        }
+        
+        if (builder.toString().endsWith(&quot;&amp;&quot;)) {
+            builder.deleteCharAt(builder.lastIndexOf(&quot;&amp;&quot;));
+        }
+        return builder.toString();
+    }
+
+
+String buildUrl(String path, Map params)
+            throws UnsupportedEncodingException {
+        StringBuilder builder = new StringBuilder(path);
+        builder.append(&quot;?&quot;);
+        Set keySet = params.keySet();
+        for(String k : keySet){
+            String v = params.get(k);
+            if (v != null) {
+                builder.append(k);
+                builder.append(&quot;=&quot;);
+                try {
+                    builder.append(URLEncoder.encode(new String(v.getBytes(), &quot;UTF-8&quot;), &quot;UTF-8&quot;));
+                } catch (UnsupportedEncodingException e) {
+                    e.printStackTrace();
+                }
+                builder.append(&quot;&amp;&quot;);
+            }
+        }
+        
+        if (builder.toString().endsWith(&quot;&amp;&quot;)) {
+            builder.deleteCharAt(builder.lastIndexOf(&quot;&amp;&quot;));
+        }
+        return builder.toString();
+    }
+
+if(vars.get(&quot;ecid&quot;) == null){ 
+	ecid = &quot;ct_&quot;+UUID.randomUUID().toString();
+	vars.put(&quot;ecid&quot;, ecid);
+}
+
+if(vars.get(&quot;enrollPath&quot;) == null){ 
+	Map enrollParams = new HashMap();
+	enrollParams.put(&quot;external_customer_id&quot;, ecid);
+	enrollParams.put(&quot;uuid&quot;, uuid);
+	enrollParams.put(&quot;status&quot;, &quot;active&quot;);
+	enrollParams.put(&quot;auto_enroll&quot;,&quot;true&quot;);
+	enrollParams.put(&quot;sig&quot;, getSignature(buildUrlForSig(enrollmentPath, secret, enrollParams)));
+	String pathToEnroll = buildUrl(enrollmentPath, enrollParams);
+	vars.put(&quot;enrollPath&quot;, pathToEnroll);
+}
+
+if(vars.get(&quot;customerShowPath&quot;) == null){ 
+	Map customerShowParams = new HashMap();
+	customerShowParams.put(&quot;external_customer_id&quot;, ecid);
+	customerShowParams.put(&quot;uuid&quot;, uuid);
+	customerShowParams.put(&quot;sig&quot;, getSignature(buildUrlForSig(customerShowPath, secret, customerShowParams)));
+	String pathToCustomerShow = buildUrl(customerShowPath, customerShowParams);
+	vars.put(&quot;customerShowPath&quot;, pathToCustomerShow);
+}
+
+if(vars.get(&quot;recordEventPath&quot;) == null){ 
+	Map recordEventParams = new HashMap();
+	recordEventParams.put(&quot;type&quot;,&quot;load_test&quot;);
+	recordEventParams.put(&quot;external_customer_id&quot;, ecid);
+	recordEventParams.put(&quot;uuid&quot;, uuid);
+	recordEventParams.put(&quot;sig&quot;, getSignature(buildUrlForSig(recordEventPath, secret, recordEventParams)));
+	String pathToRecord = buildUrl(recordEventPath, recordEventParams);
+	vars.put(&quot;recordEventPath&quot;, pathToRecord);
+}
+
+
+if(vars.get(&quot;customerEventsPath&quot;) == null){ 
+	Map customerEventsParams = new HashMap();
+	customerEventsParams.put(&quot;external_customer_id&quot;, ecid);
+	customerEventsParams.put(&quot;uuid&quot;, uuid);
+	customerEventsParams.put(&quot;sig&quot;, getSignature(buildUrlForSig(customerEventsPath, secret, customerEventsParams)));
+	String pathToCustomerEvents = buildUrl(customerEventsPath, customerEventsParams);
+	vars.put(&quot;customerEventsPath&quot;, pathToCustomerEvents);
+}
+
+
+
+
+
+</stringProp>
+        </BeanShellPreProcessor>
+        <hashTree/>
+        <Arguments guiclass="ArgumentsPanel" testclass="Arguments" testname="LoyaltyAccountConfigVariables" enabled="true">
+          <collectionProp name="Arguments.arguments">
+            <elementProp name="uuid" elementType="Argument">
+              <stringProp name="Argument.name">uuid</stringProp>
+              <stringProp name="Argument.value">KvHnPtd1js</stringProp>
+              <stringProp name="Argument.metadata">=</stringProp>
+            </elementProp>
+            <elementProp name="secret" elementType="Argument">
+              <stringProp name="Argument.name">secret</stringProp>
+              <stringProp name="Argument.value">pl2a88mRr6fznQ1eAnP1mTdRzeHOc97H</stringProp>
+              <stringProp name="Argument.metadata">=</stringProp>
+            </elementProp>
+          </collectionProp>
+        </Arguments>
+        <hashTree/>
+        <ConfigTestElement guiclass="HttpDefaultsGui" testclass="ConfigTestElement" testname="LoylatyPlatformHttpsDefault" enabled="true">
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+            <collectionProp name="Arguments.arguments"/>
+          </elementProp>
+          <stringProp name="HTTPSampler.domain">loyalty-cn.merklechina.com</stringProp>
+          <stringProp name="HTTPSampler.port"></stringProp>
+          <stringProp name="HTTPSampler.protocol">https</stringProp>
+          <stringProp name="HTTPSampler.contentEncoding"></stringProp>
+          <stringProp name="HTTPSampler.path"></stringProp>
+          <stringProp name="HTTPSampler.concurrentPool">6</stringProp>
+          <stringProp name="HTTPSampler.connect_timeout"></stringProp>
+          <stringProp name="HTTPSampler.response_timeout"></stringProp>
+        </ConfigTestElement>
+        <hashTree/>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="enroll" enabled="true">
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+            <collectionProp name="Arguments.arguments"/>
+          </elementProp>
+          <stringProp name="HTTPSampler.domain"></stringProp>
+          <stringProp name="HTTPSampler.port"></stringProp>
+          <stringProp name="HTTPSampler.protocol"></stringProp>
+          <stringProp name="HTTPSampler.contentEncoding"></stringProp>
+          <stringProp name="HTTPSampler.path">${enrollPath}</stringProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+          <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+          <stringProp name="HTTPSampler.connect_timeout"></stringProp>
+          <stringProp name="HTTPSampler.response_timeout"></stringProp>
+        </HTTPSamplerProxy>
+        <hashTree/>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="showCustomerInfo" enabled="true">
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+            <collectionProp name="Arguments.arguments"/>
+          </elementProp>
+          <stringProp name="HTTPSampler.domain"></stringProp>
+          <stringProp name="HTTPSampler.port"></stringProp>
+          <stringProp name="HTTPSampler.protocol"></stringProp>
+          <stringProp name="HTTPSampler.contentEncoding"></stringProp>
+          <stringProp name="HTTPSampler.path">${customerShowPath}</stringProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+          <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+          <stringProp name="HTTPSampler.connect_timeout"></stringProp>
+          <stringProp name="HTTPSampler.response_timeout"></stringProp>
+        </HTTPSamplerProxy>
+        <hashTree/>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="recordLoadTestEvent" enabled="true">
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+            <collectionProp name="Arguments.arguments"/>
+          </elementProp>
+          <stringProp name="HTTPSampler.domain"></stringProp>
+          <stringProp name="HTTPSampler.port"></stringProp>
+          <stringProp name="HTTPSampler.protocol"></stringProp>
+          <stringProp name="HTTPSampler.contentEncoding"></stringProp>
+          <stringProp name="HTTPSampler.path">${recordEventPath}</stringProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+          <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+          <stringProp name="HTTPSampler.connect_timeout"></stringProp>
+          <stringProp name="HTTPSampler.response_timeout"></stringProp>
+        </HTTPSamplerProxy>
+        <hashTree/>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="customerEvents" enabled="true">
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+            <collectionProp name="Arguments.arguments"/>
+          </elementProp>
+          <stringProp name="HTTPSampler.domain"></stringProp>
+          <stringProp name="HTTPSampler.port"></stringProp>
+          <stringProp name="HTTPSampler.protocol"></stringProp>
+          <stringProp name="HTTPSampler.contentEncoding"></stringProp>
+          <stringProp name="HTTPSampler.path">${customerEventsPath}</stringProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.auto_redirects">false</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+          <boolProp name="HTTPSampler.DO_MULTIPART_POST">false</boolProp>
+          <stringProp name="HTTPSampler.embedded_url_re"></stringProp>
+          <stringProp name="HTTPSampler.connect_timeout"></stringProp>
+          <stringProp name="HTTPSampler.response_timeout"></stringProp>
+        </HTTPSamplerProxy>
+        <hashTree/>
+        <ResultCollector guiclass="SummaryReport" testclass="ResultCollector" testname="Summary Report" enabled="true">
+          <boolProp name="ResultCollector.error_logging">false</boolProp>
+          <objProp>
+            <name>saveConfig</name>
+            <value class="SampleSaveConfiguration">
+              <time>true</time>
+              <latency>true</latency>
+              <timestamp>true</timestamp>
+              <success>true</success>
+              <label>true</label>
+              <code>true</code>
+              <message>true</message>
+              <threadName>true</threadName>
+              <dataType>true</dataType>
+              <encoding>false</encoding>
+              <assertions>true</assertions>
+              <subresults>true</subresults>
+              <responseData>false</responseData>
+              <samplerData>false</samplerData>
+              <xml>false</xml>
+              <fieldNames>true</fieldNames>
+              <responseHeaders>false</responseHeaders>
+              <requestHeaders>false</requestHeaders>
+              <responseDataOnError>false</responseDataOnError>
+              <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+              <assertionsResultsToSave>0</assertionsResultsToSave>
+              <bytes>true</bytes>
+              <sentBytes>true</sentBytes>
+              <url>true</url>
+              <threadCounts>true</threadCounts>
+              <idleTime>true</idleTime>
+              <connectTime>true</connectTime>
+            </value>
+          </objProp>
+          <stringProp name="filename"></stringProp>
+        </ResultCollector>
+        <hashTree/>
+        <ResultCollector guiclass="StatGraphVisualizer" testclass="ResultCollector" testname="Aggregate Graph" enabled="false">
+          <boolProp name="ResultCollector.error_logging">false</boolProp>
+          <objProp>
+            <name>saveConfig</name>
+            <value class="SampleSaveConfiguration">
+              <time>true</time>
+              <latency>true</latency>
+              <timestamp>true</timestamp>
+              <success>true</success>
+              <label>true</label>
+              <code>true</code>
+              <message>true</message>
+              <threadName>true</threadName>
+              <dataType>true</dataType>
+              <encoding>false</encoding>
+              <assertions>true</assertions>
+              <subresults>true</subresults>
+              <responseData>false</responseData>
+              <samplerData>false</samplerData>
+              <xml>false</xml>
+              <fieldNames>true</fieldNames>
+              <responseHeaders>false</responseHeaders>
+              <requestHeaders>false</requestHeaders>
+              <responseDataOnError>false</responseDataOnError>
+              <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+              <assertionsResultsToSave>0</assertionsResultsToSave>
+              <bytes>true</bytes>
+              <sentBytes>true</sentBytes>
+              <url>true</url>
+              <threadCounts>true</threadCounts>
+              <idleTime>true</idleTime>
+              <connectTime>true</connectTime>
+            </value>
+          </objProp>
+          <stringProp name="filename"></stringProp>
+        </ResultCollector>
+        <hashTree/>
+      </hashTree>
+      <ResultCollector guiclass="ViewResultsFullVisualizer" testclass="ResultCollector" testname="View Results Tree" enabled="false">
+        <boolProp name="ResultCollector.error_logging">false</boolProp>
+        <objProp>
+          <name>saveConfig</name>
+          <value class="SampleSaveConfiguration">
+            <time>true</time>
+            <latency>true</latency>
+            <timestamp>true</timestamp>
+            <success>true</success>
+            <label>true</label>
+            <code>true</code>
+            <message>true</message>
+            <threadName>true</threadName>
+            <dataType>true</dataType>
+            <encoding>false</encoding>
+            <assertions>true</assertions>
+            <subresults>true</subresults>
+            <responseData>false</responseData>
+            <samplerData>false</samplerData>
+            <xml>false</xml>
+            <fieldNames>true</fieldNames>
+            <responseHeaders>false</responseHeaders>
+            <requestHeaders>false</requestHeaders>
+            <responseDataOnError>false</responseDataOnError>
+            <saveAssertionResultsFailureMessage>true</saveAssertionResultsFailureMessage>
+            <assertionsResultsToSave>0</assertionsResultsToSave>
+            <bytes>true</bytes>
+            <sentBytes>true</sentBytes>
+            <url>true</url>
+            <threadCounts>true</threadCounts>
+            <idleTime>true</idleTime>
+            <connectTime>true</connectTime>
+          </value>
+        </objProp>
+        <stringProp name="filename"></stringProp>
+      </ResultCollector>
+      <hashTree/>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>
